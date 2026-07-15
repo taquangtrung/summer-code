@@ -1,0 +1,28 @@
+[env]
+# `cargo test`/`cargo run` inherit whatever `TMPDIR` the parent process set.
+# Run from inside a sandboxed `summer` session, that is `.summer/tmp` (see
+# `SCRATCH_DIR` in `sandbox/broker.rs`) -- correct for the child processes the
+# sandbox exists to confine, wrong for this workspace's own test fixtures,
+# which have no reason to land inside a tracked project directory.
+#
+# The real system `/tmp`, not somewhere under this workspace: several tests
+# build a standalone fixture crate in a temp dir, and cargo/rust-analyzer
+# resolve a workspace root by walking *up* from wherever that fixture sits.
+# Anywhere under this repo's own `target/` is still inside the `summer-code`
+# workspace, so an independent fixture gets folded into it and rust-analyzer
+# indexes the wrong project. `/tmp` has no such ancestor.
+#
+# `force = true` overrides the inherited value rather than only filling it in
+# when unset, which is the whole point: the poisoned case is exactly the one
+# where a value is already present. The cost is that it also overrides a value
+# you set deliberately, so `TMPDIR=/somewhere cargo test` will not do what it
+# reads as. Point the build somewhere else by editing this line, not the
+# environment.
+#
+# **Unix only, and that needs no Windows counterpart.** Rust reads `TMP` and
+# `TEMP` on Windows, never `TMPDIR`, so this key does nothing there -- and both
+# halves of the reason it exists are absent anyway. The poisoned value comes
+# from running inside a confined `summer` session, which needs Landlock and so
+# only happens on Linux; and the Windows temp directory has no cargo workspace
+# above it, so a fixture crate built there is already independent of this one.
+TMPDIR = { value = "/tmp", force = true }

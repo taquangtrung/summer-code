@@ -1,0 +1,155 @@
+[workspace]
+members = ["crates/journal", "crates/policy", "crates/sandbox", "crates/provider", "crates/tools", "crates/query", "crates/engine", "crates/bench", "crates/cli"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["summer-code contributors"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/taquangtrung/summer-code"
+rust-version = "1.88"
+# crates.io search ranking. Inherited per crate with `.workspace = true`, so a
+# crate that should not carry them simply does not opt in.
+keywords = ["agent", "llm", "coding-agent", "sandbox", "landlock"]
+categories = ["development-tools", "command-line-utilities"]
+
+# The lint set, in the manifest rather than only in the Makefile.
+#
+# `make check` and CI both run `clippy -- -D warnings`, and that flag is what
+# actually fails a build. What it cannot say is *which* lints, so anything beyond
+# the default groups had nowhere to live, and a plain `cargo clippy` or an
+# editor's rust-analyzer ran a different set from the gate. These tables are the
+# shared answer: every crate inherits them with `[lints] workspace = true`, so
+# the editor, a local build and CI all report the same things, and the gate stays
+# the only thing that decides a warning is fatal.
+[workspace.lints.rust]
+# Unsafe is a capability of two crates, not of the workspace. `sandbox` owns the
+# Landlock ABI probe and the `openat2` call; `cli` mutates the process
+# environment, which edition 2024 made unsafe. Both carry a crate-root
+# `#![allow(unsafe_code)]` next to the reason, which is the same
+# reviewable-exemption shape `clippy::disallowed_methods` already uses. What the
+# deny buys is the other direction: a new `unsafe` block in any other crate is a
+# build failure rather than a line in a diff nobody reads.
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+# Three placeholders with one property in common: each one compiles, ships, and
+# reports itself only at runtime. A `dbg!` writes to stderr underneath a TUI that
+# owns the screen, and `todo!()` or `unimplemented!()` panics in a session
+# holding a user's uncommitted work. The workspace contains none of the three
+# today, so this denies a regression rather than a habit.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+[workspace.dependencies]
+# Phase 0 contract + wiring
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ulid = { version = "1", features = ["serde"] }
+thiserror = "2"
+# The TUI frontend (Phase T1+). `crossterm` is pinned to the exact minor
+# `ratatui` 0.30 builds its `ratatui-crossterm` backend against, so a `KeyEvent`
+# from one matches the backend from the other. Its `event-stream` feature yields
+# a `futures::Stream` of terminal events the UI task selects against the engine
+# channel. Import crossterm types through `ratatui::crossterm` to stay on the
+# same version the backend uses.
+# `unstable-rendered-line-info` for `Paragraph::line_count`: the transcript
+# measures wrapped rows with the same code that draws them, rather than a copy
+# of the wrapping rules that drifted (it counted a wide character as one cell).
+ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
+# Display width of a character, for the input box, which wraps text itself so
+# it can place the cursor. Already in the tree through ratatui.
+unicode-width = "0.2"
+crossterm = { version = "0.29", features = ["event-stream"] }
+# The journal serializes SystemTime as RFC 3339 millis UTC; serde's default for
+# SystemTime is a {secs_since_epoch, nanos_since_epoch} struct, which is
+# unreadable and pins the wire format to a Rust representation.
+time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Locked per the plan (Phase 0 "lock in"); consumed from Phase 1 on.
+async-trait = "0.1"
+bytes = "1"
+futures-util = "0.3"
+globset = "0.4"
+# Tool-argument validation. `default-features = false` because the default pulls
+# `reqwest` for `$ref`s over http, and a tool schema that resolves a remote
+# reference is a tool schema fetching from the network at validation time. Tool
+# schemas are local and small; the resolver is not wanted here.
+jsonschema = { version = "0.18", default-features = false }
+# OS-level path and network enforcement on Linux. The second line of defense
+# behind the broker's typestate; see the Platform scope section of the plan.
+landlock = "0.4"
+# Only for the Landlock ABI probe: the landlock crate deliberately keeps runtime
+# ABI detection private, and `capabilities()` has to answer before `enter`.
+libc = "0.2"
+tempfile = "3"
+# `std::fs::canonicalize`'s Windows-only `\\?\` extended-length prefix is
+# correct for I/O but unreadable wherever a path is shown to a person; dunce
+# strips it when doing so is safe (falling back to the prefixed form only
+# where stripping it would change meaning), and is a no-op on every other OS.
+dunce = "1"
+# Full jitter on retry backoff. Without it a rate-limited fleet retries in
+# lockstep against the limit it just hit.
+rand = "0.8"
+# SecretString for the API key, so a Debug on ProviderConfig cannot print it
+# into a tracing span or the journal.
+secrecy = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
+# Real parsing, for the syntactic half of the two extraction mechanisms. The
+# `Extractor` trait was written around exactly this pair ("an LSP extractor
+# covers any language with a server; a tree-sitter extractor covers any language
+# with a grammar"), and a grammar links in rather than being spawned, so this
+# half needs nothing from the sandbox.
+tree-sitter = "0.26"
+tree-sitter-c = "0.24"
+tree-sitter-cpp = "0.23"
+tree-sitter-go = "0.25"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+
+# Word-level diffs for the `edit` tool's result and the transcript's diff
+# rendering: a line diff alone marks a whole line changed when one word did.
+# `inline` for `TextDiff::iter_inline_changes`; `unicode` so a token boundary
+# lands on punctuation (`foo.bar()` -> `bar` differs, not the whole call) and
+# not only whitespace, which whitespace-only splitting would diff as one word.
+similar = { version = "2", default-features = false, features = ["inline", "unicode"] }
+
+# URL parsing for `web_fetch`. Not hand-rolled, because the host the tool parses
+# out is the host the broker authorizes: a parser that disagrees with the HTTP
+# client about where `http://a@b/` points is a policy check on one host and a
+# connection to another.
+url = "2"
+tokio-util = { version = "0.7", features = ["rt"] }
+# Property-based tests for the two components whose invariants are easier to
+# state than to enumerate by hand: the policy evaluator ("no path that leaves
+# the root is ever allowed" is one sentence over an unbounded set of strings) and
+# the tool-argument validator, whose inputs are untrusted on both sides, the
+# arguments from the model and the schema from an MCP server this build has never
+# seen. This comment named the validator alone for a long time while nothing in
+# the workspace used proptest at all, so the dependency documented an intention
+# rather than a use.
+proptest = "1"
+
+# Workspace crates. Declared here so every crate references them with
+# `{ workspace = true }` rather than a local `path`, keeping the dependency
+# graph in one place and the per-crate manifests free of `..` path fragments.
+journal = { path = "crates/journal", package = "summer-journal", version = "0.1.0" }
+policy = { path = "crates/policy", package = "summer-policy", version = "0.1.0" }
+sandbox = { path = "crates/sandbox", package = "summer-sandbox", version = "0.1.0" }
+provider = { path = "crates/provider", package = "summer-provider", version = "0.1.0" }
+query = { path = "crates/query", package = "summer-query", version = "0.1.0" }
+tools = { path = "crates/tools", package = "summer-tools", version = "0.1.0" }
+engine = { path = "crates/engine", package = "summer-engine", version = "0.1.0" }
+
+[profile.release]
+debug = "line-tables-only"
+lto = "thin"

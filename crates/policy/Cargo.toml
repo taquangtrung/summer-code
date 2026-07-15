@@ -1,0 +1,30 @@
+[package]
+name = "summer-policy"
+description = "Capability policy as data, and its evaluator."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+globset = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# Property-based tests for the evaluator. Its invariants ("no path that leaves
+# the root is ever allowed", "a deny cannot be dodged by respelling the host")
+# are one sentence each over an unbounded set of strings, and the members that
+# matter are the ones nobody thinks to write down.
+proptest = { workspace = true }
+# Parsing the policy file is the caller's job; the tests here need a parser to
+# prove the serde shape. serde_json is the project's config format.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

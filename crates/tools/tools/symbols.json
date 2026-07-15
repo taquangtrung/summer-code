@@ -1,0 +1,21 @@
+{
+  "name": "symbols",
+  "description": "List or search code symbols (functions, structs, enums, traits, classes, interfaces, methods) in a file or across the workspace. Parsed with tree-sitter, so a keyword inside a string or comment is not reported as a symbol. Covers Rust, TypeScript, JavaScript, Python, Go, C and C++; a file in any other language yields nothing, which means 'not covered', not 'no symbols'.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "File path or directory path relative to workspace root (optional; defaults to entire workspace)."
+      },
+      "query": {
+        "type": "string",
+        "description": "Symbol name or substring filter (optional; e.g. 'TuiState', 'InputEditor', 'run_turn')."
+      },
+      "kind": {
+        "type": "string",
+        "description": "Filter by symbol kind (optional; 'fn', 'struct', 'enum', 'trait', 'type', 'const', 'mod', 'macro', 'field', 'var')."
+      }
+    }
+  }
+}

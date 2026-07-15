@@ -1,0 +1,24 @@
+{
+  "name": "graph",
+  "description": "Find who calls a symbol, what it calls, or a 1-hop Mermaid diagram. Built from a tree-sitter parse, so symbols are matched by name: same-named methods on different types may be conflated, and dynamic or trait-dispatched calls are not seen. Every answer says so. An empty result is not proof that nothing calls the symbol.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Target symbol name (e.g. 'dispatch_one', 'Engine', 'verify_code_edits')."
+      },
+      "mode": {
+        "type": "string",
+        "description": "Query mode: 'callers', 'callees', or 'mermaid' (default). An unrecognized mode is an error."
+      },
+      "depth": {
+        "type": "integer",
+        "description": "Traversal depth (1 to 5, default 1) for multi-hop caller/callee trees or Mermaid graphs."
+      }
+    },
+    "required": [
+      "symbol"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "grep",
+  "description": "Search the working tree for a regex with ripgrep (respects .gitignore). Results are file:line:text; lines longer than 300 characters are cut.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "pattern": {
+        "type": "string"
+      },
+      "glob": {
+        "type": "string",
+        "description": "Restrict the search to paths matching this glob, e.g. `*.rs`."
+      },
+      "path": {
+        "type": "string",
+        "description": "File or directory to search, relative to the workspace root. Defaults to the whole tree."
+      },
+      "ignore_case": {
+        "type": "boolean",
+        "description": "Match case-insensitively."
+      },
+      "context": {
+        "type": "integer",
+        "minimum": 0,
+        "description": "Lines of context to show around each match (at most 10)."
+      },
+      "files_only": {
+        "type": "boolean",
+        "description": "List only the paths of matching files."
+      }
+    },
+    "required": [
+      "pattern"
+    ]
+  }
+}

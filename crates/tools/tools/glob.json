@@ -1,0 +1,18 @@
+{
+  "name": "glob",
+  "description": "Find files by name pattern (e.g. '**/*.rs', 'src/**/test_*.py'). Returns paths relative to the workspace root, most recently modified first. Use this to locate files when you know part of the name or extension; use 'grep' when you know what is inside them.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Glob pattern matched against paths relative to the search root. '**' crosses directories, '*' does not."
+      },
+      "path": {
+        "type": "string",
+        "description": "Directory to search under, relative to the workspace root. Defaults to the workspace root."
+      }
+    },
+    "required": ["pattern"]
+  }
+}

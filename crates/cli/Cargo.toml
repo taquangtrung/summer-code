@@ -1,0 +1,45 @@
+[package]
+name = "summer-code"
+description = "The summer-code command-line frontend."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "summer"
+path = "src/main.rs"
+
+[dependencies]
+policy = { workspace = true }
+globset = { workspace = true }
+async-trait = { workspace = true }
+engine = { workspace = true }
+journal = { workspace = true }
+provider = { workspace = true }
+sandbox = { workspace = true }
+tools = { workspace = true }
+dunce = { workspace = true }
+reqwest = { workspace = true }
+secrecy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ratatui = { workspace = true }
+unicode-width = { workspace = true }
+crossterm = { workspace = true }
+futures-util = { workspace = true }
+tokio-util = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

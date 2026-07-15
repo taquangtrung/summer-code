@@ -1,0 +1,22 @@
+[package]
+name = "summer-journal"
+description = "Append-only event tree for a summer-code session: schema, codec, walk."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+ulid = { workspace = true }
+
+[lints]
+workspace = true

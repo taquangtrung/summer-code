@@ -1,0 +1,18 @@
+{
+  "name": "web_fetch",
+  "description": "Fetch a URL and return its content as readable text, with HTML converted to prose. Use it to read library documentation, API references, RFCs, and issue threads rather than recalling them from memory. The network policy checks the host before the request, so a fetch can be denied.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "Absolute http or https URL to fetch."
+      },
+      "max_bytes": {
+        "type": "integer",
+        "description": "Truncate the extracted text to this many bytes. Defaults to 50000."
+      }
+    },
+    "required": ["url"]
+  }
+}

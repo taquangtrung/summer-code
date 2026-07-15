@@ -1,0 +1,36 @@
+{
+  "name": "edit",
+  "description": "Make precise, anchored edits to a file. Supports 'str_replace' (exact string substitution), 'create' (new file), or 'overwrite' (whole-file rewrite). Prefer 'str_replace' to minimize edit blast radius and prevent truncation.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "File path relative to workspace root."
+      },
+      "action": {
+        "type": "string",
+        "description": "Edit action: 'str_replace' (default, replaces exact old_string with new_string), 'create' (create new file), or 'overwrite' (full rewrite)."
+      },
+      "old_string": {
+        "type": "string",
+        "description": "Exact target substring to replace. Must match exactly once unless replace_all is true. If it matches nowhere exactly, a match that differs only in smart quotes, Unicode dashes or spaces, or trailing whitespace is used when there is exactly one."
+      },
+      "new_string": {
+        "type": "string",
+        "description": "Replacement substring."
+      },
+      "content": {
+        "type": "string",
+        "description": "Full file content for 'create' or 'overwrite' actions."
+      },
+      "replace_all": {
+        "type": "boolean",
+        "description": "Replace every occurrence of old_string instead of requiring exactly one (for renames). Defaults to false."
+      }
+    },
+    "required": [
+      "path"
+    ]
+  }
+}

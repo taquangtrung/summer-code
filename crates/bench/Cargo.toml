@@ -1,0 +1,38 @@
+[package]
+name = "summer-bench"
+description = "Agent scoring on real repos with a real model: rates with intervals, not verdicts."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "summer-bench"
+path = "src/main.rs"
+
+[lib]
+name = "bench"
+
+[dependencies]
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+engine = { workspace = true }
+journal = { workspace = true }
+policy = { workspace = true }
+provider = { workspace = true }
+tools = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+# The metrics suite drives `run_task` with a scripted provider, which needs a
+# broker that answers yes. Dev-only, and behind sandbox's `testing` feature, so
+# the permissive constructor cannot reach a release build.
+sandbox = { workspace = true, features = ["testing"] }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+# Runtime output under the repo's `.summer/` store. Not `.summer/` wholesale:
+# a repository may commit its own `.summer/config.json`, `.summer/policy.json`,
+# `.summer/skills/`, or `.summer/commands/` as reviewable project content.
+.summer/sessions/
+.agents
+# Workspace snapshot manifests, written on every run (the /rewind store).
+.summer/snapshots/
+# Scratch space for spawned children (see SCRATCH_DIR in sandbox/broker.rs).
+# Pruned automatically past a day old, but still not something to commit.
+.summer/tmp/

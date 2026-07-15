@@ -1,0 +1,4 @@
+# Build output from running a fixture's success criterion locally. The fixtures
+# are inputs: the runner copies them per run and never builds in place, so
+# anything here came from a human checking a task by hand.
+target/

@@ -1,0 +1,47 @@
+[package]
+name = "summer-sandbox"
+description = "The only crate that touches fs/process/net for agent-driven work."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+# `testing` exposes `Broker::permissive`, which allows everything, records
+# nothing, and gates on no capabilities. It is a real bypass of the typestate, so
+# it is not part of the crate's ordinary surface: a crate that wants it says so in
+# its `dev-dependencies`, where the admission is reviewable and cannot reach a
+# release build.
+[features]
+testing = []
+
+[dependencies]
+async-trait = { workspace = true }
+policy = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+
+# `O_NONBLOCK` on every unix, so opening a FIFO cannot hang the broker before it
+# has a handle to inspect. macOS also reaches seatbelt through `sandbox_init`.
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+# Landlock is Linux-only. Windows gets the `none` backend and is told so at
+# startup.
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock = { workspace = true }
+
+[dev-dependencies]
+globset = { workspace = true }
+# `mkfifo`, to stage the one file shape that makes a "bounded" read unbounded.
+libc = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true

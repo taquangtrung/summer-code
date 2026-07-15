@@ -1,0 +1,18 @@
+{
+  "name": "web_search",
+  "description": "Search the web and get back result titles, URLs, and snippets. Use it to find the documentation page or issue thread you then read with 'web_fetch'. Requires a search API key to be configured; if none is, the tool says so.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query."
+      },
+      "count": {
+        "type": "integer",
+        "description": "How many results to return. Defaults to 10, capped at 20."
+      }
+    },
+    "required": ["query"]
+  }
+}

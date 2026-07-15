@@ -1,0 +1,9 @@
+# `[workspace]` detaches this fixture from the summer-code workspace above it,
+# for the reason `greet` gives: a fixture that believes it is a member of a
+# workspace it is not fails to build once copied.
+[workspace]
+
+[package]
+name = "typed"
+version = "0.1.0"
+edition = "2021"

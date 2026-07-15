@@ -1,0 +1,29 @@
+{
+  "name": "read",
+  "description": "Read a file's contents as UTF-8 text. Each line is prefixed with its 1-based number and a tab; the prefix is not part of the file, so leave it out of an edit's old_string.{skeleton_note}",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string"
+      },
+      "offset": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "First line to return, 1-based. Defaults to 1."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "How many lines to return."
+      },
+      "mode": {
+        "type": "string",
+        "description": "Read mode: 'text' (default) or 'skeleton' (signatures and type definitions, bodies elided)."
+      }
+    },
+    "required": [
+      "path"
+    ]
+  }
+}

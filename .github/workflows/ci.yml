@@ -1,0 +1,121 @@
+# The gate, in the one place nobody can forget it.
+#
+# `make check` was the whole gate while the project had one contributor, and
+# AGENTS.md said so: a workflow would mostly re-run what had already been run
+# locally. Opening the repository is the event that argument named as the thing
+# that would change it. A patch from someone who has never read AGENTS.md is not
+# covered by a convention recorded in AGENTS.md.
+#
+# `check` mirrors `make check` step by step rather than calling it, so a failure
+# names the step that failed instead of the make target that contained it. The
+# steps stay in the same order, and the Makefile stays the local entry point.
+name: CI
+
+# **Pull requests only, and the omission of `push` is the design.** The gate
+# exists for patches from people who have not read AGENTS.md, and a direct push
+# to `main` is by definition not one of those: whoever made it has commit rights
+# and ran `make check`, which is the same suite this workflow runs. Adding
+# `push` would re-run the local gate on every commit and mail its author about
+# work they already verified, which is how a workflow becomes noise somebody
+# eventually switches off. Nothing is lost that `make check` did not already
+# cover, and everything the local run cannot reach (the MSRV build, native macOS
+# and Windows) still runs on every patch that arrives as a PR.
+on:
+  pull_request:
+
+# A force-push to a PR branch should cancel the run it superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A build failure that only says "error" is a build failure someone has to
+  # reproduce locally to read.
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: gate (fmt, clippy, doc, test, contracts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately not a setup-toolchain action. Those export
+      # `RUSTUP_TOOLCHAIN`, which takes precedence over `rust-toolchain.toml` and
+      # would quietly test a compiler this repository does not pin. `rustup show`
+      # reads the file and materializes exactly what it names, components
+      # included, so the gate runs on the toolchain contributors run.
+      - name: install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      # A broken intra-doc link compiles, tests clean, and lints clean, then
+      # renders as plain text on docs.rs. Nothing else catches it.
+      - name: cargo doc
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace
+
+      # journal and policy must stay consumable without an async runtime or the
+      # sandbox. See docs/ARCHITECTURE.md, Workspace Layout.
+      - name: contract-crate dependencies
+        run: ./scripts/check-contract-deps.sh
+
+  msrv:
+    # Kept in step with `rust-version` in Cargo.toml. This job is what makes that
+    # field a checked constraint rather than a guess, and it is the one place an
+    # explicit toolchain override is wanted: it must ignore rust-toolchain.toml.
+    name: msrv 1.88.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+
+      # `check`, not `test`: the MSRV is a claim about what compiles against this
+      # crate, and the behaviour is already covered by the gate job above.
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+  platforms:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform's failure should not hide another's.
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install the pinned toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      # This is what scripts/check-platforms.sh could not do. That script
+      # cross-compiles, so it proves "builds elsewhere" and never "behaves
+      # elsewhere"; it also needs a C toolchain per target, which is why it is
+      # not in `make check`. A native runner has the toolchain and can run the
+      # tests, so the cfg-gated code (the child environment allowlist, the shell
+      # the `shell` tool spawns, the home-directory variable, Windows' verbatim
+      # path prefix, the sandbox backends) is exercised rather than compiled.
+      - name: cargo test
+        run: cargo test --workspace

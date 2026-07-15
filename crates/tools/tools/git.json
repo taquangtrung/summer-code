@@ -1,0 +1,14 @@
+{
+  "name": "git",
+  "description": "Run a git subcommand with arguments, e.g. `[\"status\", \"--short\"]`.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "args": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "required": ["args"]
+  }
+}

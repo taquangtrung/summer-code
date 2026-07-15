@@ -1,0 +1,14 @@
+[toolchain]
+# Pinned, not floating. This file's job is reproducible local builds, which is a
+# different job from the MSRV in `Cargo.toml`: that one is the checkable
+# constraint on what this crate needs, and `channel = "stable"` would satisfy
+# neither, because "stable" means a different compiler every six weeks and a
+# clippy that finds different lints each time.
+#
+# Edition 2024 needs rustc >= 1.85, so the MSRV in `Cargo.toml` cannot go below
+# that; it reads 1.88 because that is the oldest compiler CI actually builds the
+# workspace with, and an MSRV nothing checks is a guess. The sandbox design
+# relies on `std::sync::mpsc::Sender: Sync` (Rust 1.72), far below either floor,
+# so the channel choice in sandbox typechecks on both.
+channel = "1.96.0"
+components = ["rustfmt", "clippy"]

@@ -1,0 +1,465 @@
+{
+  "name": "starter",
+  "commands": [
+    "sh",
+    "python3",
+    "ruff"
+  ],
+  "tasks": [
+    {
+      "name": "write-a-file",
+      "group": "smoke",
+      "repo": "fixtures/notes",
+      "prompt": "Create a file called VERSION at the root of this repository whose entire contents are the line 0.1.0",
+      "success": {
+        "kind": "file_matches",
+        "path": "VERSION",
+        "expected": "0.1.0\n"
+      }
+    },
+    {
+      "name": "make-the-test-compile",
+      "group": "compile",
+      "repo": "fixtures/greet",
+      "prompt": "The test in this crate does not compile. Change the code under test so that `cargo test` passes. Do not change the test.",
+      "success": {
+        "kind": "command_exits_zero",
+        "command": "cargo test"
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "fix-the-return-type",
+      "group": "compile",
+      "repo": "fixtures/typed",
+      "prompt": "This crate does not compile. `parse_setting` reports why a line was rejected but its signature was left behind. Correct the signature so `cargo test` passes, and change nothing else.",
+      "success": {
+        "kind": "command_exits_zero",
+        "command": "cargo test"
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "fix-the-debit",
+      "group": "compile",
+      "repo": "fixtures/ledger",
+      "prompt": "`cargo test` fails on one test in this crate. An entry's direction is its `Kind`, not the sign of its `cents`, and `balance` ignores that. Fix `balance` so every test passes, and change nothing else.",
+      "success": {
+        "kind": "command_exits_zero",
+        "command": "cargo test"
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "fix-the-chain-step",
+      "group": "compile",
+      "repo": "fixtures/nav",
+      "prompt": "In src/lib.rs, exactly one function in the chain takes a wrong step, and `cargo test` fails on both tests. Find the function at fault and correct its step. Change nothing else: every other function, and the tests, stay as they are.",
+      "success": {
+        "kind": "command_exits_zero",
+        "command": "cargo test"
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "fix-the-python",
+      "group": "compile",
+      "repo": "fixtures/pyfix",
+      "prompt": "In calc.py, `total` is broken: `total([1, 2, 3])` must return 6 but the function raises instead. Fix `total` and change nothing else.",
+      "success": {
+        "kind": "command_exits_zero",
+        "command": "python3 -c \"from calc import total; assert total([1, 2, 3]) == 6\""
+      }
+    },
+    {
+      "name": "reject-the-bad-row",
+      "group": "compile",
+      "repo": "fixtures/pipeline",
+      "prompt": "`python3 -m unittest discover` fails on one test in this directory. `parse_row` accepts rows it should refuse: a blank name, a quantity that is not positive, or a negative price must each raise ValueError. Make every test pass without changing the tests.",
+      "success": {
+        "kind": "command_exits_zero",
+        "command": "python3 -m unittest discover"
+      }
+    },
+    {
+      "name": "cut-the-release",
+      "group": "multistep",
+      "repo": "fixtures/bump",
+      "prompt": "Cut the 0.2.0 release of this repository, in three steps: set VERSION to 0.2.0, add a 0.2.0 entry to CHANGELOG.md describing the release, and append the line \"Bumped to 0.2.0\" to NOTES.md. Complete every step.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_matches",
+            "path": "VERSION",
+            "expected": "0.2.0\n"
+          },
+          {
+            "kind": "file_contains",
+            "path": "CHANGELOG.md",
+            "contains": "0.2.0"
+          },
+          {
+            "kind": "file_contains",
+            "path": "NOTES.md",
+            "contains": "Bumped to 0.2.0"
+          }
+        ]
+      }
+    },
+    {
+      "name": "add-the-express-service",
+      "group": "multistep",
+      "repo": "fixtures/shipping",
+      "prompt": "Add a third shipping service called \"express\" at 2000 cents per kilogram, in three steps: add it to the RATES table in rates.py, list it under Services in README.md, and add a 0.2.0 section to CHANGELOG.md that mentions express. Complete every step.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_contains",
+            "path": "rates.py",
+            "contains": "\"express\""
+          },
+          {
+            "kind": "file_contains",
+            "path": "rates.py",
+            "contains": "2000"
+          },
+          {
+            "kind": "file_contains",
+            "path": "README.md",
+            "contains": "express"
+          },
+          {
+            "kind": "file_contains",
+            "path": "CHANGELOG.md",
+            "contains": "0.2.0"
+          },
+          {
+            "kind": "file_contains",
+            "path": "CHANGELOG.md",
+            "contains": "express"
+          }
+        ]
+      }
+    },
+    {
+      "name": "extend-the-catalog",
+      "group": "multistep",
+      "repo": "fixtures/catalog",
+      "prompt": "Add a conversion for the chain to this catalog: one chain is 20.1168 metres. Follow the file's existing convention for naming, doc line, and ordering, and update COUNT so it still says how many conversions the file defines. `cargo test` must still pass.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "chain_to_metre"
+          },
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "20.1168"
+          },
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "COUNT: usize = 29"
+          },
+          {
+            "kind": "command_exits_zero",
+            "command": "cargo test"
+          }
+        ]
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "document-the-ledger",
+      "group": "multistep",
+      "repo": "fixtures/ledger",
+      "prompt": "Do three things to this crate, all of them: fix `balance` so `cargo test` passes (an entry's direction is its `Kind`, not the sign of its `cents`), add a README.md whose first line is \"# ledger\", and append the line \"balance respects Kind\" to README.md.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "command_exits_zero",
+            "command": "cargo test"
+          },
+          {
+            "kind": "file_contains",
+            "path": "README.md",
+            "contains": "# ledger"
+          },
+          {
+            "kind": "file_contains",
+            "path": "README.md",
+            "contains": "balance respects Kind"
+          }
+        ]
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "respect-the-wordlist-skill",
+      "group": "skill",
+      "repo": "fixtures/guarded",
+      "prompt": "Add the words `anteater` and `mango` to words.txt.",
+      "success": {
+        "kind": "file_matches",
+        "path": "words.txt",
+        "expected": "anteater\napple\nbanana\ncherry\ndog\nelm\nfig\ngrape\nmango\n# total: 9\n"
+      },
+      "skills": [
+        {
+          "paths": "words.txt",
+          "skill": "wordlist"
+        }
+      ]
+    },
+    {
+      "name": "respect-the-units-skill",
+      "group": "skill",
+      "repo": "fixtures/inventory",
+      "prompt": "Add a row to stock.csv for 12 flanges at location B4.",
+      "success": {
+        "kind": "file_matches",
+        "path": "stock.csv",
+        "expected": "item,qty,location\nbolt,120,A1\ncrate,8,C3\nflange,12,B4\ngasket,45,B2\nwasher,300,A2\n# items: 5\n"
+      },
+      "skills": [
+        {
+          "paths": "stock.csv",
+          "skill": "units"
+        }
+      ]
+    },
+    {
+      "name": "respect-the-units-skill-on-removal",
+      "group": "skill",
+      "repo": "fixtures/inventory",
+      "prompt": "Remove the crate row from stock.csv.",
+      "success": {
+        "kind": "file_matches",
+        "path": "stock.csv",
+        "expected": "item,qty,location\nbolt,120,A1\ngasket,45,B2\nwasher,300,A2\n# items: 3\n"
+      },
+      "skills": [
+        {
+          "paths": "stock.csv",
+          "skill": "units"
+        }
+      ]
+    },
+    {
+      "name": "respect-the-wordlist-skill-on-removal",
+      "group": "skill",
+      "repo": "fixtures/guarded",
+      "prompt": "Remove `dog` and `elm` from words.txt.",
+      "success": {
+        "kind": "file_matches",
+        "path": "words.txt",
+        "expected": "apple\nbanana\ncherry\nfig\ngrape\n# total: 5\n"
+      },
+      "skills": [
+        {
+          "paths": "words.txt",
+          "skill": "wordlist"
+        }
+      ]
+    },
+    {
+      "name": "name-the-bases",
+      "group": "navigate",
+      "repo": "fixtures/catalog",
+      "prompt": "Add a file called BASES.md listing the base unit of every family this catalog covers, one per line, in the order the catalog declares them, each line as \"- <unit>\".",
+      "success": {
+        "kind": "file_matches",
+        "path": "BASES.md",
+        "expected": "- metre\n- gram\n- litre\n- second\n"
+      }
+    },
+    {
+      "name": "count-the-conversions",
+      "group": "navigate",
+      "repo": "fixtures/catalog",
+      "prompt": "Add a file called COUNT.txt whose entire contents are the number of conversion functions defined in src/lib.rs, as a bare number on one line.",
+      "success": {
+        "kind": "file_matches",
+        "path": "COUNT.txt",
+        "expected": "28\n"
+      }
+    },
+    {
+      "name": "find-the-subtotal",
+      "group": "navigate",
+      "repo": "fixtures/pipeline",
+      "prompt": "Add a file called ANSWER.txt whose entire contents are the name of the method that multiplies a record's quantity by its price, on one line, with no punctuation.",
+      "success": {
+        "kind": "file_matches",
+        "path": "ANSWER.txt",
+        "expected": "subtotal\n"
+      }
+    },
+    {
+      "name": "append-without-disturbing",
+      "group": "precise",
+      "repo": "fixtures/notes",
+      "prompt": "Append the line \"Second line.\" to README.md, leaving everything already in the file exactly as it is.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_contains",
+            "path": "README.md",
+            "contains": "# notes"
+          },
+          {
+            "kind": "file_contains",
+            "path": "README.md",
+            "contains": "A near-empty tree for the smoke task: can the agent write a file at all."
+          },
+          {
+            "kind": "file_contains",
+            "path": "README.md",
+            "contains": "Second line."
+          }
+        ]
+      }
+    },
+    {
+      "name": "rename-one-rate",
+      "group": "precise",
+      "repo": "fixtures/shipping",
+      "prompt": "In rates.py, rename the \"ground\" service to \"standard\", keeping its rate and leaving the air service and the `quote` function exactly as they are.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_contains",
+            "path": "rates.py",
+            "contains": "\"standard\": 450"
+          },
+          {
+            "kind": "file_contains",
+            "path": "rates.py",
+            "contains": "\"air\": 1200"
+          },
+          {
+            "kind": "file_contains",
+            "path": "rates.py",
+            "contains": "RATES[service] * kilos"
+          }
+        ]
+      }
+    },
+    {
+      "name": "change-one-factor",
+      "group": "precise",
+      "repo": "fixtures/catalog",
+      "prompt": "In src/lib.rs, the furlong conversion is the only one to change: make `furlong_to_metre` multiply by 201.168 exactly as it does now, but change its doc line to read `/// `n` furlongs in metres, the survey furlong.` Leave every other function and doc line untouched.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "the survey furlong"
+          },
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "pub fn mile_to_metre(n: f64) -> f64 {"
+          },
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "pub fn fortnight_to_second(n: f64) -> f64 {"
+          },
+          {
+            "kind": "command_exits_zero",
+            "command": "cargo test"
+          }
+        ]
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "bump-one-line",
+      "group": "precise",
+      "repo": "fixtures/bump",
+      "prompt": "Set VERSION to 0.1.1 and change nothing else in this repository.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_matches",
+            "path": "VERSION",
+            "expected": "0.1.1\n"
+          },
+          {
+            "kind": "file_contains",
+            "path": "CHANGELOG.md",
+            "contains": "0.1.0"
+          },
+          {
+            "kind": "file_contains",
+            "path": "NOTES.md",
+            "contains": "Notes"
+          }
+        ]
+      }
+    },
+    {
+      "name": "add-one-helper",
+      "group": "precise",
+      "repo": "fixtures/ledger",
+      "prompt": "Add a public function `total_debits(entries: &[Entry]) -> i64` to src/lib.rs returning the sum of the `cents` of every Debit entry. Leave the existing functions and tests as they are; the crate must still compile.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "pub fn total_debits"
+          },
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "pub fn largest_credit"
+          },
+          {
+            "kind": "file_contains",
+            "path": "src/lib.rs",
+            "contains": "pub fn format_cents"
+          },
+          {
+            "kind": "command_exits_zero",
+            "command": "cargo build"
+          }
+        ]
+      },
+      "lint": "cargo clippy --message-format=short"
+    },
+    {
+      "name": "guard-the-mean",
+      "group": "precise",
+      "repo": "fixtures/pyfix",
+      "prompt": "In calc.py, fix `total` so `total([1, 2, 3])` returns 6, and leave `mean` exactly as it is.",
+      "success": {
+        "kind": "all",
+        "checks": [
+          {
+            "kind": "command_exits_zero",
+            "command": "python3 -c \"from calc import total, mean; assert total([1,2,3]) == 6; assert mean([1,2,3]) == 2.0\""
+          },
+          {
+            "kind": "file_contains",
+            "path": "calc.py",
+            "contains": "def mean(xs):"
+          }
+        ]
+      }
+    }
+  ]
+}

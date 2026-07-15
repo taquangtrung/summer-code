@@ -1,0 +1,23 @@
+{
+  "name": "plan",
+  "description": "Record and manage step-by-step task execution plan to prevent drift on complex multi-step changes.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "steps": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "List of planned task steps."
+      },
+      "active_step": {
+        "type": "integer",
+        "description": "1-based index of the currently active step."
+      },
+      "status": {
+        "type": "string",
+        "description": "Status update ('in_progress', 'completed', 'blocked')."
+      }
+    },
+    "required": ["steps"]
+  }
+}

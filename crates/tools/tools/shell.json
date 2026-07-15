@@ -1,0 +1,16 @@
+{
+  "name": "shell",
+  "description": "Run a command line with `{program} {flag}` and return its output and exit status. Write the command in {program} syntax. A command is stopped after {default_timeout} seconds; for a longer build or test suite, pass `timeout_secs` (at most {max_timeout}).",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "command": { "type": "string" },
+      "timeout_secs": {
+        "type": "integer",
+        "minimum": 1,
+        "description": "Seconds before the command is stopped."
+      }
+    },
+    "required": ["command"]
+  }
+}

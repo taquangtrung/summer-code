@@ -1,0 +1,18 @@
+{
+  "name": "subagent",
+  "description": "Delegate a self-contained sub-task to a subagent that runs in a session with its own context window, and return only its final answer. Use it for work whose intermediate steps you do not need to see: locating every caller of a symbol, surveying how a pattern is used across many files, or reading a large document down to one conclusion. The subagent shares this workspace and its permissions, sees none of this conversation, and runs on the same model.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "The sub-task, stated in full. The subagent cannot see this conversation, so include every fact it needs and say what to report back."
+      },
+      "role": {
+        "type": "string",
+        "description": "Brief 2-5 word description of the subagent's role (e.g. 'Codebase Researcher'). Shown in the transcript and given to the subagent as its role."
+      }
+    },
+    "required": ["prompt"]
+  }
+}

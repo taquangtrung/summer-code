@@ -1,0 +1,22 @@
+{
+  "name": "pattern",
+  "description": "Search for structural AST patterns or node kinds across files in the workspace (Rust, TypeScript, JavaScript, Python, Go, C, C++). Supports Tree-Sitter query syntax (e.g. `(call_expression function: (identifier) @call)`) or AST node kind matching (e.g. `impl_item`, `function_definition`, `struct_specifier`).",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Tree-sitter query S-expression (e.g. `(call_expression function: (identifier) @call)`) or an AST node kind name (e.g. `impl_item`, `function_definition`, `struct_specifier`)."
+      },
+      "path": {
+        "type": "string",
+        "description": "Directory or file path to search within. Defaults to the current workspace root."
+      },
+      "language": {
+        "type": "string",
+        "description": "Optional language filter: rust, typescript, javascript, python, go, c, cpp."
+      }
+    },
+    "required": ["pattern"]
+  }
+}

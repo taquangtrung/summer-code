@@ -1,0 +1,11 @@
+{
+  "name": "skill",
+  "description": "Load a skill's full instructions by name; see <available_skills> in the system prompt for the names. Apply what it returns.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string" }
+    },
+    "required": ["name"]
+  }
+}

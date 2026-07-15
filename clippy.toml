@@ -1,0 +1,74 @@
+# Enforcement rule (defense in depth): no agent-driven fs/process/net outside
+# sandbox. The typestate in sandbox is the real enforcement; this
+# lint catches a contributor bypassing the crate entirely by reaching for std.
+#
+# Harness crates that legitimately do harness-driven I/O (engine opens the
+# journal file and its daemon module binds a socket, cli reads config) opt out
+# at the crate root with `#![allow(clippy::disallowed_methods)]`. Adding that
+# allow is the reviewable event; a silent local `#[allow]` is not.
+disallowed-methods = [
+    { path = "std::fs::create_dir", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::create_dir_all", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::File::create", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::File::open", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::hard_link", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::metadata", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::read", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::read_dir", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::read_link", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::read_to_string", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::remove_dir", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::remove_dir_all", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::remove_file", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::rename", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::soft_link", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::symlink_metadata", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::write", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::fs::OpenOptions::open", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "std::net::TcpListener::bind", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "std::net::TcpStream::connect", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "std::net::UdpSocket::bind", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "std::net::UdpSocket::connect", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "std::os::unix::net::UnixListener::bind", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "std::os::unix::net::UnixStream::connect", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "std::process::Command::arg", reason = "agent-driven exec goes through sandbox::Broker" },
+    { path = "std::process::Command::args", reason = "agent-driven exec goes through sandbox::Broker" },
+    { path = "std::process::Command::new", reason = "agent-driven exec goes through sandbox::Broker" },
+    { path = "std::process::Command::output", reason = "agent-driven exec goes through sandbox::Broker" },
+    { path = "std::process::Command::spawn", reason = "agent-driven exec goes through sandbox::Broker" },
+    { path = "std::process::Command::status", reason = "agent-driven exec goes through sandbox::Broker" },
+    # The tokio half. Listing only `std` left the lint half-done in a workspace
+    # where every crate takes tokio with `features = ["full"]`: `tokio::fs::write`
+    # is the idiomatic reach in an async fn, and it tripped nothing at all.
+    { path = "tokio::fs::copy", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::create_dir", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::create_dir_all", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::hard_link", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::metadata", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::read", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::read_dir", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::read_link", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::read_to_string", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::remove_dir", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::remove_dir_all", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::remove_file", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::rename", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::symlink", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::symlink_metadata", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::write", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::File::create", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::File::open", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::fs::OpenOptions::open", reason = "agent-driven fs goes through sandbox::Broker" },
+    { path = "tokio::net::TcpListener::bind", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "tokio::net::TcpStream::connect", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "tokio::net::UdpSocket::bind", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "tokio::net::UnixListener::bind", reason = "agent-driven net goes through sandbox::Broker" },
+    { path = "tokio::net::UnixStream::connect", reason = "agent-driven net goes through sandbox::Broker" },
+    # DNS, which is the other half of reaching a host. A tool that resolves a
+    # name itself has the address the policy check never saw, which is the gap
+    # `Broker::lookup` exists to close: the client it hands addresses to must not
+    # be able to ask a second time.
+    { path = "std::net::ToSocketAddrs::to_socket_addrs", reason = "agent-driven name resolution goes through sandbox::Broker" },
+    { path = "tokio::net::lookup_host", reason = "agent-driven name resolution goes through sandbox::Broker" },
+    { path = "tokio::process::Command::new", reason = "agent-driven exec goes through sandbox::Broker" },
+]
