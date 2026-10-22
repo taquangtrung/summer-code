@@ -16,6 +16,13 @@ use crate::tui::state::{
 use crate::tui::{DriverCx, PickerCx};
 
 // ========================================================================
+// Constants
+// ========================================================================
+
+/// The name of a session nothing has been said in yet.
+const UNTITLED: &str = "untitled session";
+
+// ========================================================================
 // Functions
 // ========================================================================
 
@@ -30,7 +37,10 @@ pub(super) fn sessions_text(state: &TuiState) -> String {
     }
     let mut out = String::from("sessions (newest first):");
     for row in &rows {
-        out.push_str(&format!("\n  {}  {:>10}  {}", row.id, row.age, row.preview));
+        out.push_str(&format!(
+            "\n  {:>10}  {}  ({})",
+            row.age, row.preview, row.id
+        ));
     }
     out.push_str("\n  (/resume picks from this list; /resume <session-id> names one)");
     out
@@ -123,6 +133,7 @@ pub(super) fn resume_session(
     let Some(mut engine) = engine_slot.take() else {
         return Ok(());
     };
+    let name = session_name(&path);
     let mut result = Ok(0);
     if let Err(error) = fold_journal_into(&mut engine, &path, state) {
         result = Err(error);
@@ -131,7 +142,7 @@ pub(super) fn resume_session(
     match result {
         Ok(count) => {
             state.notify(format!(
-                "resumed session {id} ({count} records). The model has the prior context; \
+                "resumed \"{name}\" ({count} records). The model has the prior context; \
                  new turns continue in this session."
             ));
         }
@@ -140,8 +151,31 @@ pub(super) fn resume_session(
     Ok(())
 }
 
+/// Pick up the running session's generated title once the engine has recorded
+/// it, for the surfaces that name the session while it runs (the window title,
+/// the picker's active row). The engine records it a turn or so after the
+/// first, so this rereads the journal after each turn until it finds one, and
+/// never again after.
+pub(super) fn learn_session_title(state: &mut TuiState) {
+    if state.session_title.is_some() || state.session_id.is_empty() {
+        return;
+    }
+    let path =
+        std::path::Path::new(&state.sessions_dir).join(format!("{}.jsonl", state.session_id));
+    let Ok(file) = std::fs::File::open(path) else {
+        return;
+    };
+    let Ok(records) = journal::read_records(std::io::BufReader::new(file)) else {
+        return;
+    };
+    state.session_title = records.iter().find_map(|record| match &record.kind {
+        journal::RecordKind::SessionTitled { title } => Some(title.clone()),
+        _ => None,
+    });
+}
+
 /// This project's sessions, newest first, each with a one-line preview (see
-/// [`preview_of`]) so a picker row says what the session was about. Shared by
+/// [`session_name`]) so a picker row says what the session was about. Shared by
 /// `/resume`'s picker and `/sessions`' listing, so the two lists agree.
 fn list_sessions(dir: &std::path::Path) -> Vec<SessionRow> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -153,7 +187,7 @@ fn list_sessions(dir: &std::path::Path) -> Vec<SessionRow> {
         .filter_map(|entry| {
             let id = entry.path().file_stem()?.to_string_lossy().to_string();
             let modified = entry.metadata().ok()?.modified().ok()?;
-            let preview = preview_of(&entry.path());
+            let preview = session_name(&entry.path());
             let age = format_age(modified);
             Some((modified, SessionRow { age, id, preview }))
         })
@@ -162,15 +196,17 @@ fn list_sessions(dir: &std::path::Path) -> Vec<SessionRow> {
     rows.into_iter().map(|(_, row)| row).collect()
 }
 
-/// The journal's generated title if it has one, else its first user message's
-/// first line, truncated either way: enough to recognize a session by without
-/// reading the whole file into the picker. A title is recorded once, after the
-/// session's first turn, so a session still on its first turn (or one from
-/// before this existed) has none yet and falls back. Unreadable or
-/// message-less journals preview as their record count.
-fn preview_of(path: &std::path::Path) -> String {
+/// What a session is called wherever it is shown: the journal's generated title
+/// if it has one, else its first user message's first line, truncated either
+/// way. Its id is a ULID, unique but unreadable, so it is shown only where it
+/// has to be typed (`/sessions`, for `/resume <id>`). A title is recorded once,
+/// after the session's first turn, so a session still on its first turn (or
+/// one from before this existed) has none yet and falls back. A session with
+/// no message yet is untitled.
+pub(super) fn session_name(path: &std::path::Path) -> String {
+    // Not written yet is the newest session there is, not a broken one.
     let Ok(file) = std::fs::File::open(path) else {
-        return "(unreadable)".into();
+        return UNTITLED.into();
     };
     let Ok(records) = journal::read_records(std::io::BufReader::new(file)) else {
         return "(unreadable)".into();
@@ -186,7 +222,7 @@ fn preview_of(path: &std::path::Path) -> String {
             return truncate(line, 70);
         }
     }
-    format!("({} records, no user message)", records.len())
+    UNTITLED.into()
 }
 
 /// `/resume <id>`: fold a past session's journal into the running engine, so the
@@ -222,7 +258,7 @@ mod tests {
     use super::*;
 
     /// Write `records` as a journal file under a fresh temp dir and return its
-    /// path, for a test that reads it back through [`preview_of`].
+    /// path, for a test that reads it back through [`session_name`].
     fn journal_fixture(records: &[Record]) -> std::path::PathBuf {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.keep().join("session.jsonl");
@@ -233,7 +269,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_of_prefers_the_generated_title_over_the_first_user_message() {
+    fn session_name_prefers_the_generated_title_over_the_first_user_message() {
         // A session on its first turn (or one journaled before titling
         // existed) has no `SessionTitled` record yet, and must still fall back
         // to the first user message -- the picker's original behavior.
@@ -262,7 +298,7 @@ mod tests {
             session,
         };
         assert_eq!(
-            preview_of(&journal_fixture(&[started.clone(), user_message.clone()])),
+            session_name(&journal_fixture(&[started.clone(), user_message.clone()])),
             "please add a README badge",
             "no title yet: falls back to the first line of the first user message"
         );
@@ -277,9 +313,36 @@ mod tests {
             session,
         };
         assert_eq!(
-            preview_of(&journal_fixture(&[started, user_message, titled])),
+            session_name(&journal_fixture(&[started, user_message, titled])),
             "Add a README badge",
             "a title, once recorded, replaces the first-user-message preview"
+        );
+    }
+
+    #[test]
+    fn the_running_session_learns_its_title_once_the_journal_has_one() {
+        let session = SessionId::new();
+        let titled = Record {
+            at: std::time::SystemTime::now(),
+            id: RecordId::new(),
+            kind: RecordKind::SessionTitled {
+                title: "Fix the flaky login test".into(),
+            },
+            parent: None,
+            session,
+        };
+        let path = journal_fixture(&[titled]);
+        let mut state = crate::tui::testing::state_with(0, &[]);
+        state.sessions_dir = path.parent().unwrap().display().to_string();
+        state.session_id = "missing".into();
+        learn_session_title(&mut state);
+        assert_eq!(state.session_title, None, "no journal yet, no title");
+
+        state.session_id = "session".into();
+        learn_session_title(&mut state);
+        assert_eq!(
+            state.session_title.as_deref(),
+            Some("Fix the flaky login test")
         );
     }
 }

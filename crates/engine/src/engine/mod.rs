@@ -341,7 +341,7 @@ pub enum EngineError {
     ContextOverflow,
     #[error(transparent)]
     Provider(#[from] ProviderError),
-    #[error("journal could not be written: {0}")]
+    #[error("session could not be written: {0}")]
     Sink(io::Error),
     /// `stop_reason: max_tokens`. The output was cut off, so the turn cannot be
     /// acted on: raise `max_tokens` or drop effort.
@@ -533,7 +533,7 @@ impl Engine {
         // turn as an error because the OS was slow to be told about it would
         // trade a durability problem for a correctness one.
         if let Err(error) = self.recorder.flush() {
-            tracing::warn!(%error, "the journal could not be flushed");
+            tracing::warn!(%error, "the session could not be flushed");
         }
         result
     }
@@ -649,7 +649,7 @@ impl Engine {
         self.plan_open = false;
         self.edited.clear();
         if let Err(error) = self.recorder.flush() {
-            tracing::warn!(%error, "the journal could not be flushed");
+            tracing::warn!(%error, "the session could not be flushed");
         }
         Ok(true)
     }
@@ -667,7 +667,7 @@ impl Engine {
         if let Ok(Ok(Some(title))) = tokio::time::timeout(TITLE_SETTLE_TIMEOUT, handle).await {
             self.record_title(title);
             if let Err(error) = self.recorder.flush() {
-                tracing::warn!(%error, "the journal could not be flushed");
+                tracing::warn!(%error, "the session could not be flushed");
             }
         }
     }

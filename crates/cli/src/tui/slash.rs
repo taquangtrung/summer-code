@@ -33,7 +33,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
         command: Command::Status,
         name: "status",
-        description: "show session status (model, sandbox, journal)",
+        description: "show session status (model, sandbox, session file)",
     },
     CommandSpec {
         command: Command::Policy,

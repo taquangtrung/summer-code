@@ -16,12 +16,12 @@ use ratatui::Frame;
 use ratatui::layout::{Margin, Position, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::tui::input::{CompletionKind, EditMode, InputEditor};
 use crate::tui::markdown::{
-    TAB_AS_SPACES, highlight_diff_line, render_markdown_cached, render_markdown_live,
+    RULE, TAB_AS_SPACES, highlight_diff_line, render_markdown_cached, render_markdown_live,
 };
 use crate::tui::state::{
     Item, PickerStage, PlanDisplay, PlanProgress, SecretInput, ToolStatus, ToolView, TuiState,
@@ -130,7 +130,7 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
     if areas.transcript.height > 0 {
         let content = areas.transcript;
         let mut text = if state.transcript.is_empty() && !state.streaming {
-            welcome_text(state)
+            welcome_text(state, content)
         } else {
             transcript_text(&state.transcript, state.streaming)
         };
@@ -157,7 +157,7 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
         for queued in &state.queued {
             let first_line = queued.lines().next().unwrap_or_default();
             text.lines.push(Line::from(Span::styled(
-                format!("  queued: {first_line}"),
+                format!("queued: {first_line}"),
                 Style::new()
                     .fg(Color::DarkGray)
                     .add_modifier(Modifier::ITALIC),
@@ -181,7 +181,7 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
                 if is_selected {
                     text.lines.push(Line::from(vec![
                         Span::styled(
-                            "  ● ",
+                            "● ",
                             Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled(
@@ -195,7 +195,7 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
                     ]));
                 } else {
                     text.lines.push(Line::from(vec![
-                        Span::styled("  ○ ", Style::new().fg(Color::DarkGray)),
+                        Span::styled("○ ", Style::new().fg(Color::DarkGray)),
                         Span::styled(format!("[{key_label}] "), Style::new().fg(Color::DarkGray)),
                         Span::styled(text_label.clone(), Style::new().fg(Color::Gray)),
                     ]));
@@ -208,6 +208,8 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
         // to say so. `trim: false` keeps leading indentation, which matters for
         // the code the agent is showing.
         let wrap = Wrap { trim: false };
+        fit_rules(&mut text.lines, content.width);
+        anchor_scroll(state, &text, content.width);
         // Only the lines that reach the screen are handed to ratatui, counted
         // up from the bottom. Wrapping the whole transcript every frame made
         // each streamed token cost as much as the session was long, and the
@@ -226,6 +228,17 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
                 .scroll((window.scroll, 0)),
             content,
         );
+        // Drawn before the overlays that float above the input box, so a
+        // banner or acceptance note still wins the row.
+        if window.scroll_up > 0 && content.height >= 2 {
+            let row = Rect {
+                y: content.y + content.height - 1,
+                height: 1,
+                ..content
+            };
+            frame.render_widget(Clear, row);
+            frame.render_widget(Paragraph::new(scrolled_back_line(window.scroll_up)), row);
+        }
     }
 
     render_completion_popup(input, area, areas.input, frame);
@@ -243,6 +256,12 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
     }
 }
 
+/// Where the input box sits in a frame of `area`, from the same layout the
+/// render uses, so a mouse event is placed against what is on screen.
+pub(crate) fn input_area(area: Rect, input: &InputEditor) -> Rect {
+    Areas::of(area, input).input
+}
+
 /// The Ctrl+O detail pager: the same [`transcript_text`] the live view renders,
 /// but filling the whole window above a one-line footer, scrolled by an offset
 /// vim motions own rather than follow-the-tail. Shares [`transcript_text`] and
@@ -250,7 +269,8 @@ pub fn view(state: &mut TuiState, input: &InputEditor, frame: &mut Frame) {
 fn render_detail(state: &mut TuiState, area: Rect, frame: &mut Frame) {
     // The pager's rendering expands thinking and tool bodies whatever the
     // transcript's own toggles say; see `transcript_text_expanded`.
-    let text = transcript_text_expanded(&state.transcript, state.streaming);
+    let mut text = transcript_text_expanded(&state.transcript, state.streaming);
+    fit_rules(&mut text.lines, area.width);
     let body_height = area.height.saturating_sub(1);
     let body = Rect {
         height: body_height,
@@ -273,7 +293,6 @@ fn render_detail(state: &mut TuiState, area: Rect, frame: &mut Frame) {
         .expect("render_detail is only called with the pager open");
     detail.offset = detail.offset.min(max);
     let (start, scroll) = head_window(&text.lines, area.width, detail.offset);
-    let mut text = text;
     let text = Text::from(text.lines.split_off(start));
     let prefix = if detail.pending_g { "g" } else { "" };
     frame.render_widget(
@@ -347,26 +366,27 @@ impl Areas {
 /// directly in the transcript below the conversation.
 fn render_input_box(state: &TuiState, input: &InputEditor, area: Rect, frame: &mut Frame) {
     let inner = if area.height >= 3 {
+        // Dim rules, like Claude Code's, so the band frames the prompt without
+        // competing with it.
+        let rules = Block::new()
+            .borders(Borders::TOP | Borders::BOTTOM)
+            .border_style(Style::new().fg(Color::DarkGray));
         let block = match input.edit_mode() {
-            EditMode::Emacs => Block::new().borders(Borders::TOP | Borders::BOTTOM),
-            EditMode::VimNormal => Block::new()
-                .borders(Borders::TOP | Borders::BOTTOM)
-                .title_top(Line::from(vec![Span::styled(
-                    " NORMAL ",
-                    Style::new()
-                        .fg(Color::Black)
-                        .bg(Color::Blue)
-                        .add_modifier(Modifier::BOLD),
-                )])),
-            EditMode::VimInsert => Block::new()
-                .borders(Borders::TOP | Borders::BOTTOM)
-                .title_top(Line::from(vec![Span::styled(
-                    " INSERT ",
-                    Style::new()
-                        .fg(Color::Black)
-                        .bg(Color::Green)
-                        .add_modifier(Modifier::BOLD),
-                )])),
+            EditMode::Emacs => rules,
+            EditMode::VimNormal => rules.title_top(Line::from(vec![Span::styled(
+                " NORMAL ",
+                Style::new()
+                    .fg(Color::Black)
+                    .bg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            )])),
+            EditMode::VimInsert => rules.title_top(Line::from(vec![Span::styled(
+                " INSERT ",
+                Style::new()
+                    .fg(Color::Black)
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )])),
         };
         let block = match input.search_label() {
             Some(label) => block.title_top(Line::from(Span::styled(
@@ -551,6 +571,56 @@ fn wrapped_line_rows(line: &Line<'_>, width: usize) -> usize {
         .wrap(Wrap { trim: false })
         .line_count(width)
         .max(1)
+}
+
+/// Widen every rule the markdown drew (a line ending in [`RULE`]) to `width`,
+/// so a `---` or a code fence's frame spans the window instead of stopping at
+/// a fixed length that looked stubby on a wide terminal and wrapped on a
+/// narrow one.
+fn fit_rules(lines: &mut [Line<'_>], width: u16) {
+    for line in lines {
+        let Some(last) = line.spans.last() else {
+            continue;
+        };
+        if last.content != RULE {
+            continue;
+        }
+        let before: usize = line.spans[..line.spans.len() - 1]
+            .iter()
+            .map(Span::width)
+            .sum();
+        let fill = usize::from(width).saturating_sub(before).max(1);
+        if let Some(last) = line.spans.last_mut() {
+            last.content = "─".repeat(fill).into();
+        }
+    }
+}
+
+/// Keep a scrolled-back view on the line being read: grow `scroll_up` by the
+/// rows the transcript gained since the last frame. Only counted while scrolled
+/// back, since a full wrap per frame is the cost the tail window avoids, and
+/// reset on a width change, where the rows grew from rewrapping, not arrival.
+fn anchor_scroll(state: &mut TuiState, text: &Text<'_>, width: u16) {
+    if state.scroll_up == 0 {
+        state.scroll_anchor = None;
+        return;
+    }
+    let rows = wrapped_height(text, width);
+    if let Some((anchored_width, anchored_rows)) = state.scroll_anchor
+        && anchored_width == width
+    {
+        state.scroll_up += rows.saturating_sub(anchored_rows);
+    }
+    state.scroll_anchor = Some((width, rows));
+}
+
+/// The row that says the view has left the tail, and how to get back to it.
+fn scrolled_back_line(rows_below: usize) -> Line<'static> {
+    let noun = if rows_below == 1 { "row" } else { "rows" };
+    Line::from(Span::styled(
+        format!("↓ {rows_below} {noun} below · PageDown or the wheel to follow"),
+        Style::new().fg(Color::Black).bg(Color::DarkGray),
+    ))
 }
 
 /// The part of a transcript the live view shows: from line `start`, scrolled
@@ -930,7 +1000,7 @@ fn tool_text_with(view: &ToolView, expand: bool) -> Text<'static> {
         let (body_lines, hidden) = body_lines(body, diff, limit);
         lines.extend(body_lines);
         if hidden > 0 {
-            lines.push(more_lines(format!("  … +{hidden} lines (Ctrl+O for all)")));
+            lines.push(more_lines(format!("… +{hidden} lines (Ctrl+O for all)")));
         }
     }
     Text::from(lines)
@@ -950,7 +1020,9 @@ fn body_lines(body: &str, diff: bool, limit: usize) -> (Vec<Line<'static>>, usiz
         .take(limit)
         .map(|line| {
             let line = line.replace('\t', TAB_AS_SPACES);
-            let mut spans = vec![Span::raw("  ")];
+            // A gutter rather than an indent: it ties the body to the header
+            // above it at column 0, the way a block quote is marked.
+            let mut spans = vec![Span::styled("│ ", Style::new().fg(Color::DarkGray))];
             if !diff {
                 spans.push(Span::styled(line, Style::new().fg(Color::DarkGray)));
             } else if line.starts_with("@@ ") {
@@ -986,7 +1058,7 @@ fn context_warning(state: &TuiState) -> Option<Line<'static>> {
     (percent >= CONTEXT_WARNING_PERCENT).then(|| {
         Line::from(Span::styled(
             format!(
-                "  context {percent}% of the way to compaction: older turns will be summarized soon (/compact now to choose when)"
+                "context {percent}% of the way to compaction: older turns will be summarized soon (/compact now to choose when)"
             ),
             Style::new().fg(Color::Yellow).add_modifier(Modifier::DIM),
         ))
@@ -997,26 +1069,28 @@ fn context_warning(state: &TuiState) -> Option<Line<'static>> {
 /// is, where it is pointed, and the handful of keys worth knowing, the way
 /// Claude Code and Pi open. An empty transcript used to be a blank screen, and
 /// everything below it had to be discovered by already knowing to press `?`.
-fn welcome_text(state: &TuiState) -> Text<'static> {
+/// `area` is the transcript region the screen fills, which is what places the
+/// tips at its foot.
+fn welcome_text(state: &TuiState, area: Rect) -> Text<'static> {
     let accent = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);
     let dim = Style::new().fg(Color::DarkGray);
     let mut lines = vec![
         Line::from(vec![
-            Span::styled(" ✻ ", accent),
+            Span::styled("✻ ", accent),
             Span::styled("summer-code", accent),
             Span::styled(format!(" {}", env!("CARGO_PKG_VERSION")), dim),
         ]),
-        Line::from(Span::styled(format!("   {}", state.status.cwd), dim)),
+        Line::from(Span::styled(state.status.cwd.clone(), dim)),
         Line::from(vec![
-            Span::styled("   model ", dim),
+            Span::styled("model ", dim),
             Span::raw(state.status.model.clone()),
             Span::styled(" · mode ", dim),
             Span::raw(state.execution_mode.as_str()),
         ]),
-        Line::raw(""),
     ];
+    let mut tips = Vec::new();
     for row in WELCOME_TIPS {
-        let mut spans = vec![Span::raw("   ")];
+        let mut spans = Vec::new();
         for (key, what) in *row {
             spans.push(Span::styled(
                 *key,
@@ -1024,8 +1098,17 @@ fn welcome_text(state: &TuiState) -> Text<'static> {
             ));
             spans.push(Span::styled(format!(" {what}   "), dim));
         }
-        lines.push(Line::from(spans));
+        tips.push(Line::from(spans));
     }
+    // The tips sit on the rows just above the prompt, where the keys they
+    // name are used; the blank rows between them and the banner absorb the
+    // rest of the area. One blank row at least, so a short window still
+    // separates the two.
+    let used = wrapped_height(&Text::from(lines.clone()), area.width)
+        + wrapped_height(&Text::from(tips.clone()), area.width);
+    let gap = usize::from(area.height).saturating_sub(used).max(1);
+    lines.extend(std::iter::repeat_n(Line::raw(""), gap));
+    lines.extend(tips);
     Text::from(lines)
 }
 
@@ -1042,7 +1125,7 @@ fn plan_lines(plan: &PlanDisplay) -> Vec<Line<'static>> {
         }
     };
     let mut lines = vec![Line::from(Span::styled(
-        format!("  plan {done}/{}", plan.steps.len()),
+        format!("plan {done}/{}", plan.steps.len()),
         Style::new()
             .fg(Color::DarkGray)
             .add_modifier(Modifier::BOLD),
@@ -1069,7 +1152,7 @@ fn plan_lines(plan: &PlanDisplay) -> Vec<Line<'static>> {
             ("☐", Style::new())
         };
         lines.push(Line::from(vec![
-            Span::styled(format!("    {marker} "), style),
+            Span::styled(format!("{marker} "), style),
             Span::styled(step.clone(), style),
         ]));
     }
@@ -1082,7 +1165,7 @@ fn plan_lines(plan: &PlanDisplay) -> Vec<Line<'static>> {
 fn prompt_diff_lines(diff: &str) -> Vec<Line<'static>> {
     let (mut lines, hidden) = body_lines(diff, true, MAX_PROMPT_DIFF_LINES);
     if hidden > 0 {
-        lines.push(more_lines(format!("  … {hidden} more lines")));
+        lines.push(more_lines(format!("… {hidden} more lines")));
     }
     lines
 }
@@ -1192,11 +1275,9 @@ fn active_session_summary_lines(state: &TuiState) -> (Line<'static>, Line<'stati
             _ => None,
         })
         .unwrap_or_else(|| "new session".to_string());
-
-    let session_display = if state.session_id.is_empty() {
-        "current".to_string()
-    } else {
-        state.session_id.clone()
+    let preview = match &state.session_title {
+        Some(title) => truncate(title, ACTIVE_SESSION_PREVIEW_LIMIT),
+        None => preview,
     };
 
     let age = state
@@ -1210,15 +1291,13 @@ fn active_session_summary_lines(state: &TuiState) -> (Line<'static>, Line<'stati
             "  Active: ",
             Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         ),
-        Span::raw(session_display),
+        Span::raw(preview),
         Span::styled(" • ", Style::new().fg(Color::DarkGray)),
         Span::styled(age, Style::new().fg(Color::DarkGray)),
         Span::styled(" • ", Style::new().fg(Color::DarkGray)),
         Span::raw(turns_label),
         Span::styled(" • ", Style::new().fg(Color::DarkGray)),
         Span::raw(format!("{} tokens", state.status.total_tokens)),
-        Span::styled(" • ", Style::new().fg(Color::DarkGray)),
-        Span::styled(format!("\"{preview}\""), Style::new().fg(Color::DarkGray)),
     ]);
 
     let header = Line::from(Span::styled(
@@ -1274,7 +1353,7 @@ fn render_picker_popup(
             .collect(),
         PickerStage::Sessions { rows } => matching
             .iter()
-            .map(|&i| format!("{}  {:>10}  {}", rows[i].id, rows[i].age, rows[i].preview))
+            .map(|&i| format!("{:>10}  {}", rows[i].age, rows[i].preview))
             .collect(),
         PickerStage::Rewind { rows } => matching
             .iter()
@@ -1951,6 +2030,80 @@ mod tests {
     }
 
     #[test]
+    fn a_rule_spans_the_window_whatever_its_width() {
+        let mut text =
+            crate::tui::markdown::render_markdown("before\n\n---\n\n```rust\nfn main() {}\n```");
+        fit_rules(&mut text.lines, 50);
+        let widths: Vec<usize> = text
+            .lines
+            .iter()
+            .filter(|line| line.to_string().contains('─'))
+            .map(Line::width)
+            .collect();
+        assert_eq!(widths, [50, 50, 50], "rule, fence header, fence footer");
+    }
+
+    #[test]
+    fn a_scrolled_back_view_stays_put_as_output_arrives_and_says_so() {
+        let rows_of = |state: &mut crate::tui::state::TuiState| -> Vec<String> {
+            let mut terminal = Terminal::new(TestBackend::new(60, 12)).unwrap();
+            terminal
+                .draw(|frame| view(state, &InputEditor::new(), frame))
+                .unwrap();
+            let buf = terminal.backend().buffer();
+            buf.content()
+                .chunks(usize::from(buf.area.width))
+                .map(|row| row.iter().map(|cell| cell.symbol()).collect())
+                .collect()
+        };
+        let mut state = crate::tui::state::TuiState::new(status());
+        for n in 0..30 {
+            state.transcript.push(Item::Assistant(format!("reply {n}")));
+        }
+        state.scroll_up = 6;
+        let before = rows_of(&mut state);
+        assert!(
+            before.iter().any(|r| r.contains("rows below")),
+            "the view says it has left the tail: {before:?}"
+        );
+
+        state.transcript.push(Item::Assistant("late reply".into()));
+        let after = rows_of(&mut state);
+        assert_eq!(after[0], before[0], "new output must not move the view");
+        assert!(!after.iter().any(|r| r.contains("late reply")), "{after:?}");
+
+        state.scroll_up = 0;
+        let following = rows_of(&mut state);
+        assert!(
+            !following.iter().any(|r| r.contains("rows below")),
+            "{following:?}"
+        );
+    }
+
+    #[test]
+    fn the_welcome_tips_sit_directly_above_the_prompt() {
+        let mut terminal = Terminal::new(TestBackend::new(90, 20)).unwrap();
+        let mut state = crate::tui::state::TuiState::new(status());
+        terminal
+            .draw(|frame| view(&mut state, &InputEditor::new(), frame))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        let rows: Vec<String> = buf
+            .content()
+            .chunks(usize::from(buf.area.width))
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect())
+            .collect();
+        let last_tip = rows
+            .iter()
+            .position(|r| r.contains("edit in $EDITOR"))
+            .expect("the second row of tips");
+        assert!(
+            rows[last_tip + 1].contains('─'),
+            "the input box's top rule follows the tips: {rows:?}"
+        );
+    }
+
+    #[test]
     fn the_context_warning_appears_near_the_compaction_point_not_the_window() {
         let mut state = crate::tui::state::TuiState::new(status());
         state.context_budget = Some(100_000);
@@ -1986,20 +2139,17 @@ mod tests {
             progress: PlanProgress::InProgress,
             steps: vec!["read".into(), "edit".into(), "test".into()],
         };
-        assert_eq!(
-            rows(&plan),
-            ["  plan 1/3", "    ☒ read", "    ▶ edit", "    ☐ test"]
-        );
+        assert_eq!(rows(&plan), ["plan 1/3", "☒ read", "▶ edit", "☐ test"]);
 
         plan.progress = PlanProgress::Completed;
         assert_eq!(
             rows(&plan),
-            ["  plan 3/3", "    ☒ read", "    ☒ edit", "    ☒ test"],
+            ["plan 3/3", "☒ read", "☒ edit", "☒ test"],
             "a completed plan checks every step, whatever its active step says"
         );
 
         plan.progress = PlanProgress::Blocked;
-        assert_eq!(rows(&plan)[2], "    ✗ edit", "where it stalled");
+        assert_eq!(rows(&plan)[2], "✗ edit", "where it stalled");
     }
 
     #[test]
@@ -2074,7 +2224,7 @@ mod tests {
         let lines = prompt_diff_lines(&tools::hunk_diff("", &all_new));
         assert_eq!(lines.len(), MAX_PROMPT_DIFF_LINES + 1);
         let last = &lines[MAX_PROMPT_DIFF_LINES].spans[0].content;
-        assert_eq!(last, "  … 16 more lines", "45 rows and a header, 30 shown");
+        assert_eq!(last, "… 16 more lines", "45 rows and a header, 30 shown");
     }
 
     #[test]
@@ -3145,10 +3295,6 @@ mod tests {
 
         // The active session summary is displayed in the header.
         assert!(
-            rendered.contains("curr123"),
-            "renders active session id: {rendered}"
-        );
-        assert!(
             rendered.contains("just now"),
             "renders active session age: {rendered}"
         );
@@ -3167,8 +3313,8 @@ mod tests {
 
         // Past sessions are listed below the header with their ages.
         assert!(
-            rendered.contains("sess_past_1"),
-            "renders past session 1: {rendered}"
+            !rendered.contains("sess_past_1") && !rendered.contains("curr123"),
+            "sessions are shown by name, not id: {rendered}"
         );
         assert!(
             rendered.contains("10m ago"),
@@ -3179,7 +3325,7 @@ mod tests {
             "renders past session preview: {rendered}"
         );
         assert!(
-            rendered.contains("sess_past_2"),
+            rendered.contains("benchmarks"),
             "renders past session 2: {rendered}"
         );
         assert!(

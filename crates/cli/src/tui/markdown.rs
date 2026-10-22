@@ -31,6 +31,12 @@ use ratatui::text::{Line, Span, Text};
 /// refills from what is still on screen, rather than growing with the session.
 const RENDER_CACHE_ENTRIES: usize = 512;
 
+/// The stretchable tail of a horizontal rule or a code fence's frame. Drawn
+/// at this length here, where no width is known, and widened to the window
+/// by the view (see `view::fit_rules`), which recognizes a rule by a final
+/// span holding exactly this.
+pub(crate) const RULE: &str = "────────────────────────────────";
+
 /// What a tab is drawn as. Four, the width most code using tabs is written
 /// to be read at.
 pub(crate) const TAB_AS_SPACES: &str = "    ";
@@ -111,18 +117,12 @@ pub fn render_markdown(text: &str) -> Text<'static> {
                         format!("┌── {lang_label} "),
                         Style::new().fg(Color::DarkGray),
                     ),
-                    Span::styled(
-                        "────────────────────────────────",
-                        Style::new().fg(Color::DarkGray),
-                    ),
+                    Span::styled(RULE, Style::new().fg(Color::DarkGray)),
                 ]));
             } else {
                 in_code_block = false;
                 code_lang = None;
-                lines.push(Line::from(Span::styled(
-                    "└──",
-                    Style::new().fg(Color::DarkGray),
-                )));
+                lines.push(fence_footer());
             }
             continue;
         }
@@ -201,7 +201,7 @@ pub fn render_markdown(text: &str) -> Text<'static> {
             lines.push(Line::from(spans));
         } else if trimmed == "---" || trimmed == "***" || trimmed == "___" {
             lines.push(Line::from(Span::styled(
-                "────────────────────────────────────────",
+                RULE,
                 Style::new().fg(Color::DarkGray),
             )));
         } else {
@@ -211,13 +211,17 @@ pub fn render_markdown(text: &str) -> Text<'static> {
 
     // If text ended with an unclosed code block, add a footer fence
     if in_code_block {
-        lines.push(Line::from(Span::styled(
-            "└──",
-            Style::new().fg(Color::DarkGray),
-        )));
+        lines.push(fence_footer());
     }
 
     Text::from(lines)
+}
+
+/// The rule that closes a code block, the same stretchable length as the
+/// one that opens it.
+fn fence_footer() -> Line<'static> {
+    let dim = Style::new().fg(Color::DarkGray);
+    Line::from(vec![Span::styled("└", dim), Span::styled(RULE, dim)])
 }
 
 /// Render inline markdown spans (`code`, **bold**, *italic*).

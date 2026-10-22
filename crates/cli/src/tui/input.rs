@@ -886,6 +886,20 @@ impl InputEditor {
         }
     }
 
+    /// A wheel notch over the prompt: the command menu's selection when it is
+    /// open, else the cursor one line. Never history, unlike Up: a notch is
+    /// easily turned by accident, and recalling an entry replaces the draft.
+    /// Returns whether there was anything to move, so the caller can give an
+    /// unmoved notch to the transcript instead.
+    pub fn wheel(&mut self, up: bool) -> bool {
+        let delta = if up { -1 } else { 1 };
+        if self.completion().is_some() {
+            self.move_selection(delta);
+            return true;
+        }
+        self.move_line(delta)
+    }
+
     /// Move up (`-1`) or down (`+1`): through the command menu when it is open,
     /// then within a multi-line buffer, and only then through history. The arrow
     /// keys and Ctrl-N / Ctrl-P share this.
@@ -1865,6 +1879,21 @@ mod tests {
         assert!(!editor.is_searching());
         type_str(&mut editor, "now ");
         assert_eq!(editor.buffer(), "now run the tests");
+    }
+
+    #[test]
+    fn the_wheel_moves_within_the_draft_but_never_recalls_history_over_it() {
+        let mut editor = InputEditor::new();
+        type_str(&mut editor, "earlier");
+        assert_eq!(editor.handle(key(KeyCode::Enter)), InputAction::Submit);
+        editor.take();
+        type_str(&mut editor, "draft");
+        assert!(!editor.wheel(true), "one line: nothing to move");
+        assert_eq!(editor.buffer(), "draft", "the draft survives the notch");
+
+        editor.insert_str("\nsecond line");
+        assert!(editor.wheel(true), "a line above to move to");
+        assert_eq!(editor.buffer(), "draft\nsecond line");
     }
 
     #[test]

@@ -101,6 +101,9 @@ pub struct TuiState {
     pub delegated: Vec<Usage>,
     /// Session metadata captured once at startup, for `/status` and `/policy`.
     pub session_id: String,
+    /// The title the engine generated for this session, once it has (see
+    /// `session::learn_session_title`).
+    pub session_title: Option<String>,
     /// Where this workspace's session journals live (the bootstrap-chosen
     /// store), so `/sessions`, `/resume`, and `/status` never reconstruct —
     /// and so never disagree with — the path the journal was opened at.
@@ -163,10 +166,16 @@ pub struct TuiState {
     ///
     /// `0` is follow-the-tail, which is what a streaming turn wants. Anything
     /// higher pins the view, so the user can read what scrolled past without the
-    /// next delta yanking them back down. Clamped against the real content
-    /// height each redraw, in the view, because that is what knows the wrapped
-    /// line count and the viewport.
+    /// next delta yanking them back down (see [`TuiState::scroll_anchor`]).
+    /// Clamped against the real content height each redraw, in the view,
+    /// because that is what knows the wrapped line count and the viewport.
     pub scroll_up: usize,
+    /// While scrolled back: the width the transcript was last wrapped at and
+    /// the rows it came to. The view grows `scroll_up` by whatever arrived
+    /// since, which is what keeps a pinned view on the line being read;
+    /// counted from the bottom alone, every streamed row pushed it up one.
+    /// `None` at the tail, where nothing needs counting.
+    pub scroll_anchor: Option<(u16, usize)>,
     /// Whether new tool calls render with their body expanded, toggled by
     /// `/tools`.
     ///
@@ -563,6 +572,7 @@ impl TuiState {
             usage: Vec::new(),
             delegated: Vec::new(),
             session_id: String::new(),
+            session_title: None,
             sessions_dir: String::new(),
             provider: String::new(),
             provider_id: ProviderId::Anthropic,
@@ -576,6 +586,7 @@ impl TuiState {
             pending_secret: None,
             reported_violations: 0,
             scroll_up: 0,
+            scroll_anchor: None,
             // Collapsed by default: a full transcript of tool output drowns the
             // conversation. `/tools` is what makes it reachable at all.
             expand_tools: false,
@@ -596,13 +607,7 @@ impl TuiState {
     /// mid-read. A sticky notice is untouched by this either way: it has no
     /// countdown to restart.
     pub fn notify(&mut self, text: impl Into<String>) {
-        let at = Instant::now();
-        self.touch_plain_notices(at);
-        self.pending_messages.push(Notice {
-            text: capitalize_first(&text.into()),
-            sticky: false,
-            at,
-        });
+        self.post(text.into(), false);
     }
 
     /// Show an error in the banner and **hold it**: unlike a plain notice, it
@@ -614,13 +619,19 @@ impl TuiState {
     /// otherwise looked identical down to the color, and so
     /// [`Self::expire_banner`] knows to leave it in place.
     pub fn notify_error(&mut self, text: impl Into<String>) {
+        self.post(text.into(), true);
+    }
+
+    /// Add a notice, replacing an identical one already showing rather than
+    /// stacking a copy: four `!` commands in a row left four copies of the
+    /// same advice above the prompt, which read as four different messages.
+    fn post(&mut self, text: String, sticky: bool) {
         let at = Instant::now();
+        let text = capitalize_first(&text);
+        self.pending_messages
+            .retain(|notice| notice.text != text || notice.sticky != sticky);
         self.touch_plain_notices(at);
-        self.pending_messages.push(Notice {
-            text: capitalize_first(&text.into()),
-            sticky: true,
-            at,
-        });
+        self.pending_messages.push(Notice { text, sticky, at });
     }
 
     /// Restart every plain notice's countdown from `at`, e.g. because a fresh
@@ -1373,6 +1384,27 @@ mod tests {
     fn banner_expiry_is_none_without_any_messages() {
         let state = TuiState::new(status());
         assert_eq!(state.banner_expiry(), None);
+    }
+
+    #[test]
+    fn a_repeated_notice_replaces_its_copy_instead_of_stacking() {
+        let mut state = TuiState::new(status());
+        state.notify("the output goes to the agent with your next message");
+        state.notify("queued (1)");
+        state.notify("the output goes to the agent with your next message");
+        let texts: Vec<&str> = state
+            .pending_messages
+            .iter()
+            .map(|notice| notice.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            [
+                "Queued (1)",
+                "The output goes to the agent with your next message"
+            ],
+            "one copy, moved to the newest"
+        );
     }
 
     #[test]

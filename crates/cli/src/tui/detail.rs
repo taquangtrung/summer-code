@@ -82,6 +82,20 @@ pub(super) async fn handle_detail_key(
     Ok(())
 }
 
+/// Move an open pager by `delta` rows, clamped to its content: the mouse
+/// wheel's way in, which has no key to hand [`detail_motion`].
+pub(super) fn scroll_detail(cx: &mut DriverCx<'_>, delta: i64) {
+    let (height, width) = cx
+        .terminal
+        .size()
+        .map(|rect| (rect.height, rect.width))
+        .unwrap_or((1, 1));
+    let max = detail_max_offset(cx.state, height, width);
+    if let Some(detail) = cx.state.detail.as_mut() {
+        detail.offset = (detail.offset as i64 + delta).clamp(0, max as i64) as usize;
+    }
+}
+
 /// What a key does to an open pager, free of any terminal or driver state so
 /// the motion table is unit-testable. Vim's Normal-mode set only: motions never
 /// mutate the transcript, so browsing is always as safe as a read-only view.

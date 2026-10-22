@@ -17,14 +17,13 @@
 //! - **Panic-safe teardown.** A panic in raw mode without restoring the terminal
 //!   leaves the shell wrecked, so the panic hook leaves the alternate screen and
 //!   disables raw mode before the default hook prints.
-//! - **Bracketed paste on, mouse capture off.** Paste is enabled because without
-//!   it a multi-line paste arrives as keystrokes and every embedded Enter
-//!   submits, so pasting a stack trace starts a turn per line. Mouse capture is
-//!   deliberately *not* enabled, even though it is what a wheel-scrollable
-//!   transcript would need: capturing the mouse takes click-drag selection and
-//!   copy away from the terminal emulator, and losing the ability to copy the
-//!   agent's output costs more than the wheel is worth. PageUp/PageDown scroll
-//!   instead.
+//! - **Bracketed paste on, wheel reporting on.** Paste is enabled because
+//!   without it a multi-line paste arrives as keystrokes and every embedded
+//!   Enter submits, so pasting a stack trace starts a turn per line. The wheel
+//!   is reported (see [`mouse`]) because without it the alternate screen turns
+//!   each notch into Up or Down, which scrolled the prompt's history rather than
+//!   the transcript under the pointer. The cost is that a plain drag no longer
+//!   selects text; Shift+drag does, in every mainstream terminal emulator.
 
 use std::error::Error;
 use std::io;
@@ -58,17 +57,19 @@ use crate::tui::input::{EditMode, InputAction, InputEditor};
 use crate::tui::keybinding::keybindings_help_text;
 use crate::tui::login::{handle_secret_key, login, run_device_flow_login};
 use crate::tui::mention::expand_at_file_mentions;
+use crate::tui::mouse::{DisableWheel, EnableWheel, wheel, wheel_key};
 use crate::tui::picker::{
     effort_for, handle_picker_key, open_model_picker, open_model_picker_for, set_effort,
 };
 use crate::tui::prompt::{Answer, answer_for_key, answer_for_selection, grant_for};
 use crate::tui::session::{
-    fold_journal_into, open_rewind_picker, open_session_picker, resume_session, sessions_text,
+    fold_journal_into, learn_session_title, open_rewind_picker, open_session_picker,
+    resume_session, session_name, sessions_text,
 };
 use crate::tui::shell::ShellRun;
 use crate::tui::slash::{Command, parse_command};
 use crate::tui::state::{
-    Item, PromptDisplay, SecretInput, Status, ToolStatus, ToolView, TuiState, reduce,
+    Item, PromptDisplay, SecretInput, Status, ToolStatus, ToolView, TuiState, reduce, truncate,
 };
 use crate::tui::view::view;
 use crate::tui::workspace::{
@@ -85,6 +86,7 @@ mod keybinding;
 mod login;
 mod markdown;
 mod mention;
+mod mouse;
 mod picker;
 mod prompt;
 mod session;
@@ -232,11 +234,16 @@ pub async fn run(mut engine: Engine, session: Session) -> Result<(), Box<dyn Err
     // Take over the whole window: the alternate screen hides the shell behind
     // the TUI and is restored on every exit path below (a panic is covered by
     // the hook installed above).
-    if let Err(error) = execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste) {
+    if let Err(error) = execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableWheel
+    ) {
         let _ = disable_raw_mode();
         return Err(error.into());
     }
-    claim_title(&state.status.cwd, false);
+    claim_title(&state, false);
     // The `@` index, built off the UI thread so the first `@` does not wait.
     std::thread::spawn(file_index::warm);
     let backend = CrosstermBackend::new(io::stdout());
@@ -406,6 +413,14 @@ async fn drive(cx: &mut DriverCx<'_>) -> Result<(), Box<dyn Error>> {
             // so its newlines stay in the buffer: replayed as key events, each
             // one would have submitted a turn.
             Wake::Event(Some(Ok(Event::Paste(text)))) => route_paste(cx.state, cx.input, &text),
+            // An open picker owns the wheel as it owns the keys: a notch moves
+            // its selection rather than the prompt underneath it.
+            Wake::Event(Some(Ok(Event::Mouse(mouse)))) => match wheel_key(&mouse) {
+                Some(key) if cx.state.pending_picker.is_some() => {
+                    handle_picker_key(&mut cx.picker(), &key).await?;
+                }
+                _ => wheel(cx, &mouse),
+            },
             Wake::Event(Some(Ok(event))) => {
                 if let Event::Key(key) = event
                     && key.kind == KeyEventKind::Press
@@ -778,7 +793,7 @@ async fn run_turn(cx: &mut DriverCx<'_>, text: String) -> Result<bool, Box<dyn E
     // in-flight tool (killing its child) and, between rounds, ends the turn.
     let cancel = tokio_util::sync::CancellationToken::new();
     engine.set_turn_cancel(Some(cancel.clone()));
-    show_title(&cx.state.status.cwd, true);
+    show_title(cx.state, true);
     let task = tokio::spawn(async move {
         let result = engine.turn(text).await;
         engine.set_observer(None);
@@ -864,6 +879,8 @@ async fn run_turn(cx: &mut DriverCx<'_>, text: String) -> Result<bool, Box<dyn E
             line = statusline_output(cx.line_rx) => cx.state.statusline.set_output(line),
             event = cx.events.next() => match event {
                 Some(Ok(Event::Paste(text))) => route_paste(cx.state, cx.input, &text),
+                // The wheel works mid-turn for the reason PageUp does below.
+                Some(Ok(Event::Mouse(mouse))) => wheel(cx, &mouse),
                 Some(Ok(Event::Key(key))) if key.kind == KeyEventKind::Press => {
                     if is_ctrl_c(&key) {
                         // First Ctrl-C during a turn interrupts it. The turn task
@@ -986,7 +1003,8 @@ async fn run_turn(cx: &mut DriverCx<'_>, text: String) -> Result<bool, Box<dyn E
     *cx.engine_slot = Some(engine_back);
     // The turn may have created or deleted files the `@` menu should offer.
     file_index::invalidate();
-    show_title(&cx.state.status.cwd, false);
+    learn_session_title(cx.state);
+    show_title(cx.state, false);
     // Come-look-now, for whoever alt-tabbed away while this ran. The bell and
     // the OSC 9 request go straight to the backend, bypassing ratatui's cell
     // buffer, since neither one is a screen cell to diff.
@@ -1133,6 +1151,10 @@ const PROGRESS_TICK: Duration = Duration::from_millis(100);
 /// sets one does to it.
 const PUSH_TITLE: &str = "\x1b[22;0t";
 const POP_TITLE: &str = "\x1b[23;0t";
+
+/// How much of the session's title the window title carries after the folder:
+/// enough to tell tabs apart, short of crowding the folder out of a tab strip.
+const WINDOW_TITLE_SESSION_LIMIT: usize = 40;
 
 /// How soon a second Esc must follow the first to open the rewind picker.
 const DOUBLE_ESCAPE_WINDOW: Duration = Duration::from_millis(500);
@@ -1473,8 +1495,13 @@ fn compose_in_external_editor(cx: &mut DriverCx<'_>) {
         .arg(&path)
         .status();
     let _ = enable_raw_mode();
-    let _ = execute!(io::stdout(), EnterAlternateScreen, EnableBracketedPaste);
-    claim_title(&cx.state.status.cwd, false);
+    let _ = execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableWheel
+    );
+    claim_title(cx.state, false);
     let _ = cx.terminal.clear();
     match status {
         Ok(status) if status.success() => match std::fs::read_to_string(&path) {
@@ -1619,12 +1646,12 @@ fn prepare_code_review_prompt(cwd_str: &str) -> Option<String> {
     ))
 }
 
-/// `/status`: the session card — model, provider, sandbox, cwd, session id,
-/// journal path, and running spend.
+/// `/status`: the session card — model, provider, sandbox, cwd, session name
+/// and id, journal path, and running spend.
 fn status_text(state: &TuiState) -> String {
     let journal = format!("{}/{}.jsonl", state.sessions_dir, state.session_id);
     format!(
-        "status:\n  model: {}\n  effort: {}\n  mode: {}\n  provider: {}\n  sandbox: {}\n  cwd: {}\n  session: {}\n  journal: {}\n  tokens: {}",
+        "status:\n  model: {}\n  effort: {}\n  mode: {}\n  provider: {}\n  sandbox: {}\n  cwd: {}\n  session: {} ({})\n  session file: {}\n  tokens: {}",
         state.status.model,
         effort_for(state, &state.status.model)
             .map(Effort::as_str)
@@ -1633,6 +1660,7 @@ fn status_text(state: &TuiState) -> String {
         state.provider,
         state.status.backend,
         state.status.cwd,
+        session_name(std::path::Path::new(&journal)),
         state.session_id,
         journal,
         state.status.total_tokens,
@@ -1680,35 +1708,45 @@ fn redraw(
 /// ignores its error — so the panic hook and every exit path can share it.
 fn restore_terminal() {
     let _ = io::Write::write_all(&mut io::stdout(), POP_TITLE.as_bytes());
-    let _ = execute!(io::stdout(), DisableBracketedPaste, LeaveAlternateScreen);
+    let _ = execute!(
+        io::stdout(),
+        DisableWheel,
+        DisableBracketedPaste,
+        LeaveAlternateScreen
+    );
     let _ = disable_raw_mode();
     let _ = io::Write::flush(&mut io::stdout());
 }
 
 /// Save the terminal's own title and show this session's in its place, given
 /// back by [`restore_terminal`]. See [`show_title`].
-fn claim_title(cwd: &str, running: bool) {
+fn claim_title(state: &TuiState, running: bool) {
     let _ = io::Write::write_all(&mut io::stdout(), PUSH_TITLE.as_bytes());
-    show_title(cwd, running);
+    show_title(state, running);
 }
 
 /// Name the window after the session's folder, marked while a turn runs, so
 /// the tab that finished is findable among several without switching to each.
-/// The bell says *that* a turn ended; this says *which*.
-fn show_title(cwd: &str, running: bool) {
-    let _ = execute!(io::stdout(), SetTitle(title_for(cwd, running)));
+/// The bell says *that* a turn ended; this says *which*, and once the session
+/// has a title, what it is about.
+fn show_title(state: &TuiState, running: bool) {
+    let title = title_for(&state.status.cwd, state.session_title.as_deref(), running);
+    let _ = execute!(io::stdout(), SetTitle(title));
 }
 
-/// The window title for a session in `cwd`.
-fn title_for(cwd: &str, running: bool) -> String {
+/// The window title for a session in `cwd`, named `session` if it has a title.
+fn title_for(cwd: &str, session: Option<&str>, running: bool) -> String {
     let folder = std::path::Path::new(cwd).file_name().map_or_else(
         || cwd.to_string(),
         |name| name.to_string_lossy().into_owned(),
     );
-    if running {
-        format!("● summer · {folder}")
-    } else {
-        format!("summer · {folder}")
+    let marker = if running { "● " } else { "" };
+    match session {
+        Some(session) => format!(
+            "{marker}summer · {folder} · {}",
+            truncate(session, WINDOW_TITLE_SESSION_LIMIT)
+        ),
+        None => format!("{marker}summer · {folder}"),
     }
 }
 
@@ -1760,9 +1798,12 @@ mod tests {
         let text = status_text(&state);
         assert!(text.contains("model: mock"), "{text}");
         assert!(text.contains("provider: anthropic"), "{text}");
-        assert!(text.contains("session: abc123"), "{text}");
         assert!(
-            text.contains("journal: /home/u/.summer/projects/-repo-x/sessions/abc123.jsonl"),
+            text.contains("session: untitled session (abc123)"),
+            "{text}"
+        );
+        assert!(
+            text.contains("session file: /home/u/.summer/projects/-repo-x/sessions/abc123.jsonl"),
             "{text}"
         );
     }

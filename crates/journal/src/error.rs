@@ -25,10 +25,12 @@ pub enum JournalError {
     #[error("io error: {0}")]
     Io(#[from] io::Error),
     /// The journal was written against a schema version this build cannot read.
-    #[error("schema version mismatch: journal is {found}, this build supports up to {supported}")]
+    #[error(
+        "schema version mismatch: session file is {found}, this build supports up to {supported}"
+    )]
     Version { found: u32, supported: u32 },
     /// Two records share an id. `RecordId` is a ULID minted per record, so this is
     /// a corrupt or concatenated file rather than anything this code wrote.
-    #[error("duplicate record id {id}: the journal is corrupt or concatenated")]
+    #[error("duplicate record id {id}: the session file is corrupt or concatenated")]
     DuplicateRecord { id: RecordId },
 }

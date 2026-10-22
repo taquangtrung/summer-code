@@ -113,10 +113,10 @@ pub enum ResumeError {
     #[error(transparent)]
     Journal(#[from] JournalError),
     /// The resume head is not present in the journal.
-    #[error("resume head {0} is not present in the journal")]
+    #[error("resume head {0} is not present in the session")]
     UnknownHead(RecordId),
     /// The walk has no `SessionStarted`, so its schema version is unknown.
-    #[error("the journal walk has no SessionStarted record")]
+    #[error("the session has no SessionStarted record")]
     NoSession,
     /// Completing interrupted tool calls could not be written.
     #[error("could not complete interrupted tool calls: {0}")]
@@ -125,7 +125,7 @@ pub enum ResumeError {
     #[error("could not record the fold: {0}")]
     Record(String),
     /// The journal has no records to fold.
-    #[error("the journal has no records to resume")]
+    #[error("the session has no records to resume")]
     Empty,
 }
 

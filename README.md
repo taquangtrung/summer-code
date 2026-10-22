@@ -2,7 +2,7 @@
 
 An agentic coding assistant for the terminal: a Ratatui TUI over an event-sourced agent loop, with a policy engine and kernel-enforced sandboxing between the model and your machine.
 
-Every file read, command run, and network connection is checked against a policy before it happens, and every turn, tool call, tool result, and permission decision is journaled as an immutable record, so any session can be replayed or resumed exactly.
+Every file read, command run, and network connection is checked against a policy before it happens, and every turn, tool call, tool result, and permission decision is recorded in the session as an immutable record, so any session can be replayed or resumed exactly.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design contracts and [`docs/PROGRESS.md`](docs/PROGRESS.md) for what has shipped.
 
@@ -110,7 +110,7 @@ A server that fails to start or handshake is reported and skipped, not fatal to 
 
 The OS sandbox is **off by default** and `--sandbox` turns it on. Confinement's costs land on the paths a session shares with your machine rather than the repository: with it on, `/login` cannot store a credential under `~/.summer`, and the device flow cannot open a browser.
 
-Either way the broker checks every file access, command, and network connection against the policy and asks about anything no rule covers. What confinement changes is that an unlisted *command* no longer needs a prompt, because the child inherits the domain and can reach neither a path nor a host outside it. Those are journaled as `confined_allow` rather than `allowed`, so an audit can tell which guarantee an access rested on.
+Either way the broker checks every file access, command, and network connection against the policy and asks about anything no rule covers. What confinement changes is that an unlisted *command* no longer needs a prompt, because the child inherits the domain and can reach neither a path nor a host outside it. Those are recorded in the session as `confined_allow` rather than `allowed`, so an audit can tell which guarantee an access rested on.
 
 A `shell` call is judged by the programs its command line runs, not by the shell running it: `cargo test 2>&1 | tail -5` runs without asking because `cargo` and `tail` are both allowed, a line naming one unlisted program asks, and a line naming a denied program is denied. Only a small subset of shell is read this way (words, quotes, `;`, `&&`, `||`, `|`, and redirections that duplicate a descriptor or discard to `/dev/null`); a line using expansion, a variable assignment, a redirect to a file, or other grammar is asked about as a whole. Out of the box the allowed programs are `cargo`, `git`, `ls`, `rg`, and the read-only filters `cat`, `cut`, `grep`, `head`, `tail`, `tr` and `wc`. When a line has exactly one program no rule allows, the prompt asks about that program alone, and answering "always" remembers it with any arguments for the rest of the session, so `python3 -m pytest | tail` after `python3 -m unittest` does not ask again. Shells and wrappers whose arguments name the real program (`env`, `xargs`, `sudo`, `timeout`) are only ever remembered by their exact command line.
 

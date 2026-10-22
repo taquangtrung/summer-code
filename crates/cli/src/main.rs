@@ -994,7 +994,7 @@ fn open_journal(dir: &std::path::Path) -> Result<Box<dyn JournalSink>, Box<dyn E
         .create(true)
         .append(true)
         .open(&path)?;
-    eprintln!("[journal: {}]", display_path(&path));
+    eprintln!("[session: {}]", display_path(&path));
     Ok(Box::new(WriterSink::new(file)))
 }
 

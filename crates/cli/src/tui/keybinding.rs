@@ -60,6 +60,14 @@ const KEYBINDINGS: &[KeyBindingSpec] = &[
         description: "scroll the transcript",
     },
     KeyBindingSpec {
+        keys: "Mouse wheel",
+        description: "scroll what the pointer is over: transcript, prompt, list",
+    },
+    KeyBindingSpec {
+        keys: "Shift+drag",
+        description: "select text to copy (a plain drag is taken by the wheel)",
+    },
+    KeyBindingSpec {
         keys: "Up / Down",
         description: "recall input history",
     },

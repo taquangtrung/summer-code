@@ -168,8 +168,8 @@ impl SubagentRunner for Nested {
             usage: session.engine.spent(),
         });
 
-        let summary =
-            outcome.map_err(|error| format!("{error} (journal: {})", session.journal.display()))?;
+        let summary = outcome
+            .map_err(|error| format!("{error} (session file: {})", session.journal.display()))?;
         // The stop reason travels with the text. A subagent that hit its turn
         // ceiling has a partial answer, and the caller deciding what to do with
         // it needs to know that rather than reading it as complete.
